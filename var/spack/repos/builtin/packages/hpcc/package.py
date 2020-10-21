@@ -41,14 +41,18 @@ class Hpcc(MakefilePackage):
 
     variant(
         'fft', default='internal', description='FFT library to use',
-        values=('internal', 'fftw2', 'mkl'), multi=False
+        values=('internal', 'mkl', 'fftw3', 'fftw2'), multi=False
     )
 
     depends_on('gmake', type='build')
     depends_on('mpi@1.1:')
     depends_on('blas')
     depends_on('fftw-api@2+mpi', when='fft=fftw2')
+    depends_on('fftw-api@3+mpi', when='fft=fftw3')
     depends_on('mkl', when='fft=mkl')
+
+    conflicts('^fftw-api@3+mpi', when='@:1.5.0',
+          msg="hpcc <= 1.5.0 don't support fftw3")
 
     arch = '{0}-{1}'.format(platform.system(), platform.processor())
 
@@ -81,9 +85,9 @@ class Hpcc(MakefilePackage):
     def patch(self):
         if 'fftw' in self.spec:
             # spack's fftw2 prefix headers with floating point type
-            filter_file(r"^\s*#include <fftw.h>", "#include <sfftw.h>",
+            filter_file(r"^\s*#include <fftw.h>", "#include <dfftw.h>",
                         "FFT/wrapfftw.h")
-            filter_file(r"^\s*#include <fftw_mpi.h>", "#include <sfftw_mpi.h>",
+            filter_file(r"^\s*#include <fftw_mpi.h>", "#include <dfftw_mpi.h>",
                         "FFT/wrapmpifftw.h")
 
     def _write_make_arch(self, spec, prefix):
@@ -105,17 +109,29 @@ class Hpcc(MakefilePackage):
 
         lin_alg_libs = []
         # FFT
-        if self.spec.variants['fft'].value in ('fftw2', 'mkl'):
-            self.config['@LAINC@'] += ' -DUSING_FFTW'
+        if self.spec.variants['fft'].value in ('fftw3', 'fftw2', 'mkl'):
+            if self.spec.variants['fft'].value == 'fftw3':
+                self.config['@LAINC@'] += ' -DUSING_FFTW3'
+            else:
+                self.config['@LAINC@'] += ' -DUSING_FFTW'
 
-            if self.spec.variants['fft'].value == 'fftw2':
-                self.config['@LAINC@'] += \
+            if self.spec.variants['fft'].value == 'fftw3':
+                self.config['@LAINC@'] += ' ' +\
                     spec['fftw-api'].headers.include_flags
                 # fftw does not set up libs for version 2
                 lin_alg_libs.append(
-                    join_path(spec['fftw-api'].prefix.lib, 'libsfftw_mpi.so'))
+                    join_path(spec['fftw-api'].prefix.lib, 'libfftw3_mpi.so'))
                 lin_alg_libs.append(
-                    join_path(spec['fftw-api'].prefix.lib, 'libsfftw.so'))
+                    join_path(spec['fftw-api'].prefix.lib, 'libfftw3.so'))
+
+            if self.spec.variants['fft'].value == 'fftw2':
+                self.config['@LAINC@'] += ' ' +\
+                    spec['fftw-api'].headers.include_flags
+                # fftw does not set up libs for version 2
+                lin_alg_libs.append(
+                    join_path(spec['fftw-api'].prefix.lib, 'libdfftw_mpi.so'))
+                lin_alg_libs.append(
+                    join_path(spec['fftw-api'].prefix.lib, 'libdfftw.so'))
 
             elif self.spec.variants['fft'].value == 'mkl' and '^mkl' in spec:
                 mklroot = env['MKLROOT']
@@ -143,7 +159,7 @@ class Hpcc(MakefilePackage):
                 lin_alg_libs.append(libfftw2x_cdft)
 
         # Linear Algebra library (BLAS or VSIPL)
-        self.config['@LAINC@'] = spec['blas'].headers.include_flags
+        self.config['@LAINC@'] += ' ' + spec['blas'].headers.include_flags
         lin_alg_libs = lin_alg_libs + [
             lib for lib in spec['blas'].libs if lib not in lin_alg_libs]
 
@@ -201,10 +217,6 @@ class Hpcc(MakefilePackage):
         mkdirp(self.prefix.share.hpcc)
         install('_hpccinf.txt',
                 join_path(self.prefix.share.hpcc, 'hpccinf.txt'))
-        # copy documentation
-        mkdirp(self.prefix.doc.hpcc)
-        install('README.html', self.prefix.doc.hpcc)
-        install('README.txt', self.prefix.doc.hpcc)
 
     def flag_handler(self, name, flags):
         # old GCC defaults to -std=c90 but C99 is required for "restrict"
