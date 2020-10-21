@@ -32,6 +32,10 @@ def module(*args):
         # we can guarantee its existence. We have to do some LD_LIBRARY_PATH
         # shenanigans to ensure python will run.
 
+        if module_cmd.count('load PrgEnv-'):
+            module_cmd = module_cmd.replace('load PrgEnv-',
+                                            'restore PrgEnv-')
+
         # LD_LIBRARY_PATH under which Spack ran
         os.environ['SPACK_LD_LIBRARY_PATH'] = spack.main.spack_ld_library_path
 
