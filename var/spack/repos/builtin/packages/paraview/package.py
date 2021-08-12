@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import os
+
+from spack import *
 
 
 class Paraview(CMakePackage, CudaPackage):
@@ -20,6 +21,7 @@ class Paraview(CMakePackage, CudaPackage):
     maintainers = ['chuckatkins', 'danlipsa', 'vicentebolea']
 
     version('master', branch='master', submodules=True)
+    version('5.9.1', sha256='0d486cb6fbf55e428845c9650486f87466efcb3155e40489182a7ea85dfd4c8d', preferred=True)
     version('5.9.0', sha256='b03258b7cddb77f0ee142e3e77b377e5b1f503bcabc02bfa578298c99a06980d')
     version('5.8.1', sha256='7653950392a0d7c0287c26f1d3a25cdbaa11baa7524b0af0e6a1a0d7d487d034')
     version('5.8.0', sha256='219e4107abf40317ce054408e9c3b22fb935d464238c1c00c0161f1c8697a3f9')
@@ -53,8 +55,9 @@ class Paraview(CMakePackage, CudaPackage):
             description='Use module kits')
     variant('cuda_arch', default='native', multi=False,
             values=('native', 'fermi', 'kepler', 'maxwell',
-                    'pascal', 'volta', 'turing', 'all', 'none'),
+                    'pascal', 'volta', 'turing', 'ampere', 'all', 'none'),
             description='CUDA architecture')
+    variant('advanced_debug', default=False, description="Enable all other debug flags beside build_type, such as VTK_DEBUG_LEAK")
 
     conflicts('+python', when='+python3')
     # Python 2 support dropped with 5.9.0
@@ -124,16 +127,24 @@ class Paraview(CMakePackage, CudaPackage):
     depends_on('netcdf-c')
     depends_on('pegtl')
     depends_on('protobuf@3.4:')
-    depends_on('pugixml')
     depends_on('libxml2')
     depends_on('lz4')
-    depends_on('lzma')
+    depends_on('xz')
     depends_on('zlib')
+
+    # Older builds of pugi export their symbols differently,
+    # and pre-5.9 is unable to handle that.
+    depends_on('pugixml@:1.10', when='@:5.8.99')
+    depends_on('pugixml', when='@5.9:')
 
     # Can't contretize with python2 and py-setuptools@45.0.0:
     depends_on('py-setuptools@:44.99.99', when='+python')
     # Can't contretize with python2 and py-pillow@7.0.0:
     depends_on('pil@:6', when='+python')
+
+    # ParaView depends on cli11 due to changes in MR
+    # https://gitlab.kitware.com/paraview/paraview/-/merge_requests/4951
+    depends_on('cli11@1.9.1', when='@5.10:')
 
     patch('stl-reader-pv440.patch', when='@4.4.0')
 
@@ -148,6 +159,9 @@ class Paraview(CMakePackage, CudaPackage):
 
     # Broken H5Part with external parallel HDF5
     patch('h5part-parallel.patch', when='@5.7:5.7.999')
+
+    # Broken downstream FindMPI
+    patch('vtkm-findmpi-downstream.patch', when='@5.9.0')
 
     def url_for_version(self, version):
         _urlfmt  = 'http://www.paraview.org/files/v{0}/ParaView-v{1}{2}.tar.{3}'
@@ -180,6 +194,12 @@ class Paraview(CMakePackage, CudaPackage):
         else:
             env.set('PARAVIEW_VTK_DIR',
                     join_path(lib_dir, 'cmake', self.paraview_subdir, 'vtk'))
+
+    def flag_handler(self, name, flags):
+        if name == 'ldflags' and self.spec.satisfies('%intel'):
+            flags.append('-shared-intel')
+            return(None, flags, None)
+        return(flags, None, None)
 
     def setup_run_environment(self, env):
         # paraview 5.5 and later
@@ -252,6 +272,9 @@ class Paraview(CMakePackage, CudaPackage):
             '-DPARAVIEW_INSTALL_DEVELOPMENT_FILES:BOOL=%s' % includes,
             '-DBUILD_TESTING:BOOL=OFF',
             '-DOpenGL_GL_PREFERENCE:STRING=LEGACY']
+
+        if spec.satisfies('@5.10:'):
+            cmake_args.append('-DVTK_MODULE_USE_EXTERNAL_ParaView_vtkcatalyst:BOOL=OFF')
 
         if spec.satisfies('@:5.7') and spec['cmake'].satisfies('@3.17:'):
             cmake_args.append('-DFPHSA_NAME_MISMATCHED:BOOL=ON')
@@ -374,5 +397,17 @@ class Paraview(CMakePackage, CudaPackage):
         # arises.
         if '%intel' in spec and spec.version >= Version('5.6'):
             cmake_args.append('-DPARAVIEW_ENABLE_MOTIONFX:BOOL=OFF')
+
+        # Encourage Paraview to use the correct Python libs
+        if spec.satisfies('+python') or spec.satisfies('+python3'):
+            pylibdirs = spec['python'].libs.directories
+            cmake_args.append(
+                "-DCMAKE_INSTALL_RPATH={0}".format(
+                    ":".join(self.rpath + pylibdirs)
+                )
+            )
+
+        if '+advanced_debug' in spec:
+            cmake_args.append('-DVTK_DEBUG_LEAKS:BOOL=ON')
 
         return cmake_args

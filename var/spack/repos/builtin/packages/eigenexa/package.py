@@ -1,4 +1,4 @@
-# Copyright 2013-2020 Lawrence Livermore National Security, LLC and other
+# Copyright 2013-2021 Lawrence Livermore National Security, LLC and other
 # Spack Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
@@ -25,8 +25,10 @@ class Eigenexa(AutotoolsPackage):
     depends_on("scalapack")
 
     patch("fj_compiler.patch", when="%fj")
+    patch("gcc_compiler.patch", when="%gcc")
 
     parallel = False
+    force_autoreconf = True
 
     def setup_build_environment(self, env):
         env.set("FC", self.spec["mpi"].mpifc, force=True)
@@ -46,4 +48,37 @@ class Eigenexa(AutotoolsPackage):
                     + self.spec["scalapack"].libs.directories
                 )
             ),
+        )
+
+    @run_after('install')
+    def cache_test_sources(self):
+        """Save off benchmark files for stand-alone tests."""
+        self.cache_extra_test_sources("benchmark")
+
+    def test(self):
+        """Perform stand-alone/smoke tests using pre-built benchmarks."""
+        # NOTE: This package would ideally build the test program using
+        #   the installed software *each* time the tests are run since
+        #   this package installs a library.
+
+        test_cache_dir = join_path(
+            self.test_suite.current_test_cache_dir,
+            "benchmark"
+        )
+        test_data_dir = self.test_suite.current_test_data_dir
+
+        opts = [
+            "run-test.sh",
+            self.spec["mpi"].prefix.bin.mpirun,
+            '-n', '1',
+            join_path(test_cache_dir, "eigenexa_benchmark"),
+            '-f', join_path(test_cache_dir, "IN")
+        ]
+        env["OMP_NUM_THREADS"] = "1"
+        self.run_test(
+            "sh",
+            options=opts,
+            expected="EigenExa Test Passed !",
+            purpose="test: running benchmark checks",
+            work_dir=test_data_dir
         )

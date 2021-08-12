@@ -3,9 +3,8 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from glob import glob
-
 import os
+from glob import glob
 
 from spack import *
 
@@ -27,7 +26,7 @@ class Liggghts(MakefilePackage):
     variant('profile', default=False,
             description='Generate profiling code')
 
-    depends_on('vtk')
+    depends_on('vtk@6.1.0:8.2.0')
     depends_on('mpi', when='+mpi')
     depends_on('jpeg', when='+jpeg')
     depends_on('zlib', when="+gzip")

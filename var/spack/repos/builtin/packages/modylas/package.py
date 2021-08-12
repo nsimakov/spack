@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import os
+
+from spack import *
 
 
 class Modylas(AutotoolsPackage):
@@ -17,6 +18,7 @@ class Modylas(AutotoolsPackage):
 
     homepage = "https://www.modylas.org"
     url      = "file://{0}/MODYLAS_1.0.4.tar.gz".format(os.getcwd())
+    manual_download = True
 
     version('1.0.4', 'e0b5cccf8e363c1182eced37aa31b06b1c5b1526da7d449a6142424ac4ea6311')
 

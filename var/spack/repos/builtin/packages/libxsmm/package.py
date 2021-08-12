@@ -3,9 +3,10 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import os
 from glob import glob
+
+from spack import *
 
 
 class Libxsmm(MakefilePackage):
@@ -16,6 +17,8 @@ class Libxsmm(MakefilePackage):
     homepage = 'https://github.com/hfp/libxsmm'
     url      = 'https://github.com/hfp/libxsmm/archive/1.16.1.tar.gz'
     git      = 'https://github.com/hfp/libxsmm.git'
+
+    maintainers = ['hfp']
 
     version('master', branch='master')
     version('1.16.1', sha256='93dc7a3ec40401988729ddb2c6ea2294911261f7e6cd979cf061b5c3691d729d')

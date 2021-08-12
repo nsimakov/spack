@@ -9,17 +9,18 @@ import copy
 import os
 import sys
 
+import llnl.util.lang
 import llnl.util.tty as tty
 import llnl.util.tty.color as color
-import llnl.util.lang
 
-import spack.environment as ev
-import spack.repo
+import spack.bootstrap
 import spack.cmd as cmd
 import spack.cmd.common.arguments as arguments
+import spack.environment as ev
+import spack.repo
 import spack.user_environment as uenv
-from spack.util.string import plural
 from spack.database import InstallStatuses
+from spack.util.string import plural
 
 description = "list and search installed packages"
 section = "basic"
@@ -108,6 +109,10 @@ def setup_parser(subparser):
     )
     subparser.add_argument(
         '--end-date', help='latest date of installation [YYYY-MM-DD]'
+    )
+    subparser.add_argument(
+        '-b', '--bootstrap', action='store_true',
+        help='show software in the internal bootstrap store'
     )
 
     arguments.add_common_arguments(subparser, ['constraint'])
@@ -201,7 +206,15 @@ def display_env(env, args, decorator):
 
 def find(parser, args):
     q_args = query_arguments(args)
-    results = args.specs(**q_args)
+    # Query the current store or the internal bootstrap store if required
+    if args.bootstrap:
+        bootstrap_store_path = spack.bootstrap.store_path()
+        msg = 'Showing internal bootstrap store at "{0}"'
+        tty.msg(msg.format(bootstrap_store_path))
+        with spack.store.use_store(bootstrap_store_path):
+            results = args.specs(**q_args)
+    else:
+        results = args.specs(**q_args)
 
     decorator = lambda s, f: f
     added = set()

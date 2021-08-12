@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import llnl.util.tty as tty
+
+from spack import *
 
 
 class Freeipmi(AutotoolsPackage):
@@ -35,6 +36,8 @@ class Freeipmi(AutotoolsPackage):
         tty.warn("Requires 'root' for bmc-watchdog.service installation to"
                  " /lib/systemd/system/ !")
 
-        args = ['--prefix={0}'.format(prefix)]
+        args = ['--prefix={0}'.format(prefix),
+                "--with-systemdsystemunitdir=" +
+                self.spec['freeipmi'].prefix.lib.systemd.system]
 
         return args

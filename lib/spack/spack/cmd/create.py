@@ -11,16 +11,23 @@ import re
 import llnl.util.tty as tty
 from llnl.util.filesystem import mkdirp
 
-import spack.util.web
 import spack.repo
 import spack.stage
+import spack.util.web
 from spack.spec import Spec
+from spack.url import (
+    UndetectableNameError,
+    UndetectableVersionError,
+    parse_name,
+    parse_version,
+)
 from spack.util.editor import editor
-from spack.util.executable import which, ProcessError
-from spack.util.naming import mod_to_class
-from spack.util.naming import simplify_name, valid_fully_qualified_module_name
-from spack.url import UndetectableNameError, UndetectableVersionError
-from spack.url import parse_name, parse_version
+from spack.util.executable import ProcessError, which
+from spack.util.naming import (
+    mod_to_class,
+    simplify_name,
+    valid_fully_qualified_module_name,
+)
 
 description = "create a new package file"
 section = "packaging"
@@ -322,20 +329,40 @@ class RPackageTemplate(PackageTemplate):
     # depends_on('r-foo', type=('build', 'run'))"""
 
     body_def = """\
-    def configure_args(self, spec, prefix):
+    def configure_args(self):
         # FIXME: Add arguments to pass to install via --configure-args
         # FIXME: If not needed delete this function
         args = []
         return args"""
 
-    def __init__(self, name, *args, **kwargs):
+    def __init__(self, name, url, *args, **kwargs):
         # If the user provided `--name r-rcpp`, don't rename it r-r-rcpp
         if not name.startswith('r-'):
             # Make it more obvious that we are renaming the package
             tty.msg("Changing package name from {0} to r-{0}".format(name))
             name = 'r-{0}'.format(name)
 
-        super(RPackageTemplate, self).__init__(name, *args, **kwargs)
+        r_name = parse_name(url)
+
+        cran = re.search(
+            r'(?:r-project|rstudio)[^/]+/src' + '/([^/]+)' * 2,
+            url
+        )
+
+        if cran:
+            url = r_name
+            self.url_line = '    cran     = "{url}"'
+
+        bioc = re.search(
+            r'(?:bioconductor)[^/]+/packages' + '/([^/]+)' * 5,
+            url
+        )
+
+        if bioc:
+            self.url_line = '    url      = "{0}"\n'\
+                '    bioc     = "{1}"'.format(url, r_name)
+
+        super(RPackageTemplate, self).__init__(name, url, *args, **kwargs)
 
 
 class PerlmakePackageTemplate(PackageTemplate):
@@ -609,7 +636,7 @@ def get_name(args):
     provided, extract the name from that. Otherwise, use a default.
 
     Args:
-        args (param argparse.Namespace): The arguments given to
+        args (argparse.Namespace): The arguments given to
             ``spack create``
 
     Returns:
@@ -682,8 +709,7 @@ def get_versions(args, name):
         name (str): The name of the package
 
     Returns:
-        str and BuildSystemGuesser: Versions and hashes, and a
-            BuildSystemGuesser object
+        tuple: versions and hashes, and a BuildSystemGuesser object
     """
 
     # Default version with hash
@@ -767,7 +793,8 @@ def get_repository(args, name):
         name (str): The name of the package to create
 
     Returns:
-        Repo: A Repo object capable of determining the path to the package file
+        spack.repo.Repo: A Repo object capable of determining the path to the
+            package file
     """
     spec = Spec(name)
     # Figure out namespace for spec

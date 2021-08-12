@@ -3,11 +3,13 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import numbers
 import os
+
 from six import iteritems
 from six.moves.urllib.parse import urlparse
+
+from spack import *
 
 
 def _is_integral(x):
@@ -133,6 +135,7 @@ class Pythia6(CMakePackage):
     # majority of cases. If your case is different, platform- or
     # variant-based adjustments should be made.
     patch('pythia6.patch', level=0)
+    patch('pythia6-root.patch', level=1, when='+root')
 
     def patch(self):
         # Use our provided CMakeLists.txt. The Makefile provided with

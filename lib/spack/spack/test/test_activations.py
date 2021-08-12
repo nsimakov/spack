@@ -8,11 +8,13 @@
 """
 
 import os
+
 import pytest
 
-import spack.spec
-import spack.package
 from llnl.util.link_tree import MergeConflictError
+
+import spack.package
+import spack.spec
 from spack.directory_layout import YamlDirectoryLayout
 from spack.filesystem_view import YamlFilesystemView
 from spack.repo import RepoPath
@@ -54,7 +56,7 @@ def builtin_and_mock_packages():
     repo_dirs = [spack.paths.packages_path, spack.paths.mock_packages_path]
     path = RepoPath(*repo_dirs)
 
-    with spack.repo.swap(path):
+    with spack.repo.use_repositories(path):
         yield
 
 

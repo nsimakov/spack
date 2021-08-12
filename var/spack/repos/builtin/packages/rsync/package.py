@@ -3,6 +3,8 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import re
+
 from spack import *
 
 
@@ -24,6 +26,14 @@ class Rsync(AutotoolsPackage):
     depends_on('lz4', when='@3.2:')
 
     conflicts('%nvhpc')
+
+    executables = ['^rsync$']
+
+    @classmethod
+    def determine_version(cls, exe):
+        output = Executable(exe)('--version', output=str, error=str)
+        match = re.search(r'rsync\s+version\s+(\S+)', output)
+        return match.group(1) if match else None
 
     def configure_args(self):
         return ['--with-included-zlib=no']

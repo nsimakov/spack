@@ -10,18 +10,21 @@ after the system path is set up.
 """
 from __future__ import print_function
 
-import sys
-import re
+import argparse
+import inspect
 import os
 import os.path
-import inspect
 import pstats
-import argparse
+import re
+import signal
+import sys
 import traceback
 import warnings
+
 from six import StringIO
 
 import archspec.cpu
+
 import llnl.util.filesystem as fs
 import llnl.util.tty as tty
 import llnl.util.tty.color as color
@@ -29,17 +32,17 @@ from llnl.util.tty.log import log_output
 
 import spack
 import spack.architecture
-import spack.config
 import spack.cmd
+import spack.config
 import spack.environment as ev
+import spack.modules
 import spack.paths
 import spack.repo
 import spack.store
 import spack.util.debug
-import spack.util.path
 import spack.util.executable as exe
+import spack.util.path
 from spack.error import SpackError
-
 
 #: names of profile statistics
 stat_names = pstats.Stats.sort_arg_dict_default
@@ -355,9 +358,13 @@ def make_argument_parser(**kwargs):
         dest='help', action='store_const', const='long', default=None,
         help="show help for all commands (same as spack help --all)")
     parser.add_argument(
-        '--color', action='store', default='auto',
+        '--color', action='store',
+        default=os.environ.get('SPACK_COLOR', 'auto'),
         choices=('always', 'never', 'auto'),
         help="when to colorize output (default: auto)")
+    parser.add_argument(
+        '-c', '--config', default=None, action="append", dest="config_vars",
+        help="add one or more custom, one off config settings.")
     parser.add_argument(
         '-C', '--config-scope', dest='config_scopes', action='append',
         metavar='DIR', help="add a custom configuration scope")
@@ -413,6 +420,7 @@ def make_argument_parser(**kwargs):
         help="print additional output during builds")
     parser.add_argument(
         '--stacktrace', action='store_true',
+        default='SPACK_STACKTRACE' in os.environ,
         help="add stacktraces to all printed statements")
     parser.add_argument(
         '-V', '--version', action='store_true',
@@ -462,6 +470,10 @@ def setup_main_options(args):
     if args.insecure:
         tty.warn("You asked for --insecure. Will NOT check SSL certificates.")
         spack.config.set('config:verify_ssl', False, scope='command_line')
+
+    # Use the spack config command to handle parsing the config strings
+    for config_var in (args.config_vars or []):
+        spack.config.add(fullpath=config_var, scope="command_line")
 
     # when to use color (takes always, auto, or never)
     color.set_color_when(args.color)
@@ -518,10 +530,12 @@ class SpackCommand(object):
         """Invoke this SpackCommand.
 
         Args:
-            argv (list of str): command line arguments.
+            argv (list): command line arguments.
 
         Keyword Args:
             fail_on_error (optional bool): Don't raise an exception on error
+            global_args (optional list): List of global spack arguments:
+                simulates ``spack [global_args] [command] [*argv]``
 
         Returns:
             (str): combined output and error as a string
@@ -534,8 +548,10 @@ class SpackCommand(object):
         self.returncode = None
         self.error = None
 
+        prepend = kwargs['global_args'] if 'global_args' in kwargs else []
+
         args, unknown = self.parser.parse_known_args(
-            [self.command_name] + list(argv))
+            prepend + [self.command_name] + list(argv))
 
         fail_on_error = kwargs.get('fail_on_error', True)
 
@@ -609,7 +625,7 @@ def print_setup_info(*info):
     """Print basic information needed by setup-env.[c]sh.
 
     Args:
-        info (list of str): list of things to print: comma-separated list
+        info (list): list of things to print: comma-separated list
             of 'csh', 'sh', or 'modules'
 
     This is in ``main.py`` to make it fast; the setup scripts need to
@@ -635,12 +651,8 @@ def print_setup_info(*info):
         'tcl': list(),
         'lmod': list()
     }
-    module_roots = spack.config.get('config:module_roots')
-    module_roots = dict(
-        (k, v) for k, v in module_roots.items() if k in module_to_roots
-    )
-    for name, path in module_roots.items():
-        path = spack.util.path.canonicalize_path(path)
+    for name in module_to_roots.keys():
+        path = spack.modules.common.root_path(name, 'default')
         module_to_roots[name].append(path)
 
     other_spack_instances = spack.config.get(
@@ -677,7 +689,7 @@ def main(argv=None):
     """This is the entry point for the Spack command.
 
     Args:
-        argv (list of str or None): command line arguments, NOT including
+        argv (list or None): command line arguments, NOT including
             the executable name. If None, parses from sys.argv.
     """
     # Create a parser with a simple positional argument first.  We'll
@@ -765,21 +777,26 @@ def main(argv=None):
         tty.debug(e)
         e.die()  # gracefully die on any SpackErrors
 
-    except Exception as e:
-        if spack.config.get('config:debug'):
-            raise
-        tty.die(e)
-
     except KeyboardInterrupt:
         if spack.config.get('config:debug'):
             raise
         sys.stderr.write('\n')
-        tty.die("Keyboard interrupt.")
+        tty.error("Keyboard interrupt.")
+        if sys.version_info >= (3, 5):
+            return signal.SIGINT.value
+        else:
+            return signal.SIGINT
 
     except SystemExit as e:
         if spack.config.get('config:debug'):
             traceback.print_exc()
         return e.code
+
+    except Exception as e:
+        if spack.config.get('config:debug'):
+            raise
+        tty.error(e)
+        return 3
 
 
 class SpackCommandError(Exception):

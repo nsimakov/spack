@@ -49,7 +49,6 @@ from llnl.util.tty.color import ColorStream
 
 from spack.dependency import all_deptypes, canonical_deptype
 
-
 __all__ = ['topological_sort', 'graph_ascii', 'AsciiGraph', 'graph_dot']
 
 
@@ -62,16 +61,15 @@ def topological_sort(spec, reverse=False, deptype='all'):
     """
     deptype = canonical_deptype(deptype)
 
-    if not reverse:
-        parents = lambda s: s.dependents()
-        children = lambda s: s.dependencies()
-    else:
-        parents = lambda s: s.dependencies()
-        children = lambda s: s.dependents()
-
     # Work on a copy so this is nondestructive.
     spec = spec.copy(deps=deptype)
     nodes = spec.index(deptype=deptype)
+
+    parents = lambda s: [p for p in s.dependents() if p.name in nodes]
+    children = lambda s: s.dependencies()
+
+    if reverse:
+        parents, children = children, parents
 
     topo_order = []
     par = dict((name, parents(nodes[name])) for name in nodes.keys())

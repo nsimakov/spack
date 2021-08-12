@@ -5,14 +5,15 @@
 
 from __future__ import print_function
 
-import pytest
 import re
 import shutil
 
+import pytest
+
 from llnl.util.filesystem import mkdirp, working_dir
 
-import spack.main
 import spack.cmd.pkg
+import spack.main
 from spack.util.executable import which
 
 pytestmark = pytest.mark.skipif(not which('git'),
@@ -82,7 +83,7 @@ def mock_pkg_git_repo(tmpdir_factory):
         git('-c', 'commit.gpgsign=false', 'commit',
             '-m', 'change pkg-b, remove pkg-c, add pkg-d')
 
-    with spack.repo.swap(mock_repo):
+    with spack.repo.use_repositories(mock_repo):
         yield mock_repo_packages
 
 
@@ -129,7 +130,8 @@ def test_pkg_add(mock_pkg_git_repo):
         finally:
             shutil.rmtree('pkg-e')
             # Removing a package mid-run disrupts Spack's caching
-            spack.repo.path.repos[0]._fast_package_checker.invalidate()
+            if spack.repo.path.repos[0]._fast_package_checker:
+                spack.repo.path.repos[0]._fast_package_checker.invalidate()
 
     with pytest.raises(spack.main.SpackCommandError):
         pkg('add', 'does-not-exist')

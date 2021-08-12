@@ -3,8 +3,9 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-from spack import *
 import os
+
+from spack import *
 
 
 class Phred(MakefilePackage):
@@ -13,6 +14,7 @@ class Phred(MakefilePackage):
 
     homepage = "http://www.phrap.org/phredphrapconsed.html"
     url      = "file://{0}/phred.tar.gz".format(os.getcwd())
+    manual_download = True
 
     version('071220', sha256='26212f13fa906c1ca0af61f48d52a5f2c1aacba802bf729ba65ca5222463abce')
 
